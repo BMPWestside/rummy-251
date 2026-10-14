@@ -428,6 +428,17 @@ details summary{cursor:pointer;font-weight:800;color:var(--muted)}
 .hist{display:flex;flex-direction:column;gap:6px;font-size:14px}
 .hist div{display:flex;justify-content:space-between;gap:10px;border-bottom:1px solid rgba(255,255,255,.08);padding-block:6px}
 img.applogo{display:block;margin:-10px auto 0;width:auto;height:260px;max-width:80%;object-fit:contain;filter:drop-shadow(0 6px 14px rgba(0,0,0,.45));pointer-events:none;user-select:none}
+
+.namechips{display:flex;flex-wrap:wrap;gap:6px;margin:10px 0 2px}
+.nchip{display:inline-flex;align-items:center;border-radius:999px;background:rgba(127,176,234,.16);border:1px solid rgba(127,176,234,.4);overflow:hidden}
+.nchip button{background:none;border:0;color:var(--fg);font:800 13px var(--font);padding:5px 4px 5px 11px;min-height:0;box-shadow:none}
+.nchip button.nx{color:var(--muted);font-size:11px;padding:5px 9px 5px 5px}
+html,body{height:100%;overflow:hidden;overscroll-behavior:none}
+body{position:fixed;inset:0;margin:0}
+.wrap{height:100%;overflow-y:auto;overscroll-behavior:none;-webkit-overflow-scrolling:touch}
+.stickytop{top:0}
+table.pcols th.ph{padding-inline:2px}
+table.pcols th.ph .pn{text-overflow:clip;letter-spacing:-.2px}
 .notice{display:block;width:100%;margin:0 0 10px;padding:8px 10px;border-radius:12px;background:rgba(240,100,120,.28);border:1px solid var(--full);color:var(--fg);font-weight:800;font-size:13px;text-align:center}
 .authbox{margin-top:40px;text-align:center;display:flex;flex-direction:column;gap:14px;align-items:center}
 .authbox .bb{min-width:220px}
@@ -522,7 +533,7 @@ function editPopup(c){
   const off = v => isR ? v !== 0 : !!scoreBlocked(tot, v, c);
   const opt = (v, l, cls) => `<button class="sopt ${cls} ${cur === v ? 'cur' : ''}" data-act="edit-set" data-v="${v}" ${off(v) ? 'disabled' : ''}>${l}</button>`;
   return `<div class="modal" data-act="popup-close"><div class="modalbox" data-stop="1"><section class="glass panel tpanel" style="--c:${hue(pid)}">
-    <div class="row spread"><h2 style="color:var(--c)">${esc(p.name)} · round ${rn}</h2><button class="bb" data-act="popup-close">✕</button></div>
+    <div class="row spread"><h2 style="color:var(--c)">${esc(dn(p.name))} · round ${rn}</h2><button class="bb" data-act="popup-close">✕</button></div>
     ${isR ? '<span class="hint">Round winner. To change the winner, give R to another player.</span>' : ''}
     <div class="sgrid">${opt(0,'R','c0')}${opt(s.drop,'D','c25')}${opt(s.mid,'MD','c50')}${opt(s.full,'FC','c80')}</div>
     ${isR ? '' : `<div class="addrow"><input type="number" class="pin" inputmode="numeric" id="edit-num" min="2" max="${s.full - 1}" placeholder="2–${s.full - 1}" value="${[0, s.drop, s.mid, s.full].includes(cur) ? '' : cur}" style="max-width:none;height:32px;margin:0"><button class="bb primary" data-act="edit-num">Save</button></div>`}
@@ -635,6 +646,7 @@ function namesNext(names){
   const players = names.map(n => n.trim()).filter(Boolean).slice(0, 7).map((n, i) => ({id:uid(), name:n, hue:i}));
   if (players.length < 2){ ui.msg = 'Add at least 2 players.'; render(); return; }
   draft = {}; ui.msg = ''; ui.pick = [];
+  rememberNames(players.map(p => p.name));
   save({players, log:[], settings: game && game.settings || {}, startedAt:null});
 }
 function orderedBy(pick, players){
@@ -647,7 +659,7 @@ function startGame(){
   ui.tab = 'score'; try { localStorage.setItem('rummy-tab', 'score'); } catch(_){}
   // the 1st seat drew the highest card: they hold the money for this game
   save(Object.assign({}, game, {players, banker: players[0] && players[0].id, startedAt:new Date().toISOString()}));
-  window.scrollTo({top:0});
+  (document.querySelector('.wrap')||{}).scrollTop = 0;
 }
 function backToNames(){
   ui.setupNames = game.players.map(p => p.name); while (ui.setupNames.length < 4) ui.setupNames.push('');
@@ -667,9 +679,9 @@ function saveRound(){
     const raw = (draft[p.id] ?? '').toString().trim();
     if (raw === ''){ errs.push(p.name); continue; }
     const v = Math.round(Number(raw));
-    if (!Number.isFinite(v) || (v !== 0 && (v < 2 || v > c.s.full))){ ui.msg = `${p.name}: points must be 2 to ${c.s.full}, or 0 for Rummy.`; render(); return; }
+    if (!Number.isFinite(v) || (v !== 0 && (v < 2 || v > c.s.full))){ ui.msg = `${dn(p.name)}: points must be 2 to ${c.s.full}, or 0 for Rummy.`; render(); return; }
     const why = scoreBlocked(p.total, v, c);
-    if (why){ ui.msg = `${p.name}: ${why}`; render(); return; }
+    if (why){ ui.msg = `${dn(p.name)}: ${why}`; render(); return; }
     s[p.id] = v;
   }
   if (errs.length){ ui.msg = `Enter points for ${errs.join(', ')}.`; render(); return; }
@@ -741,6 +753,7 @@ function giveUp(pid){
 function addPlayer(name){
   name = name.trim(); const c = compute(game);
   if (!name) return;
+  rememberNames([name]);
   if ((c.rounds === 0 ? game.players.length : c.active.length) >= 7){ ui.msg = 'Maximum 7 players at the table.'; render(); return; }
   const id = uid(); ui.addName = ''; const hueN = game.players.reduce((m, p, i) => Math.max(m, p.hue != null ? p.hue : i), -1) + 1;
   if (c.rounds === 0){ save(Object.assign({}, game, {players:[...game.players, {id, name, hue:hueN}]})); return; }
@@ -782,7 +795,59 @@ function saveSettings(form){
 }
 
 /* ---------- rendering ---------- */
+/* ---------- names: initials for display, and remembered names ---------- */
+let DN = {};
+function baseInit(n){
+  const w = String(n).trim().split(/\s+/).filter(Boolean);
+  if (w.length >= 2) return w.map(x => x[0]).join('').toUpperCase().slice(0, 4);
+  const one = w[0] || '';
+  return one.length <= 3 ? one.toUpperCase() : one.slice(0, 3).toUpperCase();
+}
+function buildDN(){
+  const names = new Set();
+  (game && game.players || []).forEach(p => names.add(p.name));
+  history.forEach(h => (h.results || []).forEach(r => names.add(r.name)));
+  const groups = {};
+  names.forEach(n => { const b = baseInit(n); (groups[b] = groups[b] || []).push(n); });
+  DN = {};
+  Object.entries(groups).forEach(([b, list]) => {
+    if (list.length === 1){ DN[list[0]] = b; return; }
+    // same initials: use two letters of the first name (Surendra Madala -> SuM, Sai Mohan -> SaM)
+    const used = {};
+    list.forEach(n => {
+      const w = n.trim().split(/\s+/).filter(Boolean);
+      let v = w.length >= 2 ? w[0].slice(0, 2)[0].toUpperCase() + (w[0][1] || '').toLowerCase() + w.slice(1).map(x => x[0].toUpperCase()).join('') : w[0].slice(0, 4).toUpperCase();
+      if (used[v]){ used[v]++; v = v + used[v]; } else used[v] = 1;
+      DN[n] = v;
+    });
+  });
+}
+const dn = n => DN[n] || baseInit(n || '');
+function savedNames(){
+  let list = [];
+  try { list = JSON.parse(localStorage.getItem('rummy-names') || 'null'); } catch(_){ list = null; }
+  if (!Array.isArray(list)){
+    const set = new Set();
+    (game && game.players || []).forEach(p => set.add(p.name));
+    history.forEach(h => (h.results || []).forEach(r => set.add(r.name)));
+    list = [...set];
+    try { localStorage.setItem('rummy-names', JSON.stringify(list)); } catch(_){}
+  }
+  return list;
+}
+function rememberNames(names){
+  const list = savedNames();
+  names.map(n => String(n).trim()).filter(Boolean).forEach(n => { if (!list.some(x => x.toLowerCase() === n.toLowerCase())) list.push(n); });
+  list.sort((a, b) => a.localeCompare(b));
+  try { localStorage.setItem('rummy-names', JSON.stringify(list)); } catch(_){}
+}
+function forgetName(n){
+  const list = savedNames().filter(x => x !== n);
+  try { localStorage.setItem('rummy-names', JSON.stringify(list)); } catch(_){}
+}
+const nameList = () => `<datalist id="namelist">${savedNames().map(n => `<option value="${esc(n)}"></option>`).join('')}</datalist>`;
 function render(){
+  buildDN();
   const ae = document.activeElement; const focusId = ae && ae.id; const selStart = ae && ae.selectionStart;
   const sw0 = document.getElementById('sheetwrap'); if (sw0) sheetScroll = sw0.scrollLeft;
   ui.tabsHtml = '';
@@ -804,12 +869,17 @@ function render(){
 function fitLogo(){
   const lg = app.querySelector('img.applogo'); if (!lg) return;
   lg.style.display = 'none';
-  const wrap = document.querySelector('.wrap'); const used = wrap.getBoundingClientRect().bottom + window.scrollY;
-  const free = window.innerHeight - used - 12 + 6;
+  const wrap = document.querySelector('.wrap');
+  const wr = wrap.getBoundingClientRect(), ar = app.getBoundingClientRect();
+  const used = ar.bottom - wr.top + wrap.scrollTop;          // content height inside the screen
+  const free = wrap.clientHeight - used - 12 - 12 + 6;       // minus bottom padding and the gap above the logo
   if (free < 50) return;
   lg.style.height = Math.min(260, free - 4) + 'px'; lg.style.display = 'block';
 }
 window.addEventListener('resize', () => fitLogo());
+window.addEventListener('orientationchange', () => setTimeout(fitLogo, 300));
+if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => fitLogo());
+window.addEventListener('load', () => fitLogo());
 function authView(){
   if (ui.auth === 'badsheet') return `<section class="glass panel tpanel authbox"><h2>Can't open the score sheet</h2><p class="muted">Check the sheet ID in config.js, and that the Google Sheet is shared with the account you signed in with.</p><button class="bb" data-act="signout">Sign in with another account</button></section>`;
   return `<section class="glass panel tpanel authbox"><h2>Welcome</h2><p class="muted">Sign in with the Google account the score sheet is shared with.</p><button class="bb primary" data-act="signin">Sign in with Google</button></section>`;
@@ -829,7 +899,7 @@ function seatingView(players, mode){
   return `<section class="glass panel">
     <div class="row spread"><h2>Seating order</h2>${ui.pick.length ? `<button class="small" data-act="pick-reset">Reset</button>` : ''}</div>
     <div class="seatpick">${players.map(p => { const n = ui.pick.indexOf(p.id);
-      return `<button class="pickbtn ${n >= 0 ? 'on' : ''}" style="--c:${hue(p.id)}" data-act="pick" data-p="${p.id}" ${canWrite?'':'disabled'}><span class="num">${n >= 0 ? ord(n+1) : ''}</span><span class="pn">${esc(p.name)}</span></button>`; }).join('')}</div>
+      return `<button class="pickbtn ${n >= 0 ? 'on' : ''}" style="--c:${hue(p.id)}" data-act="pick" data-p="${p.id}" ${canWrite?'':'disabled'}><span class="num">${n >= 0 ? ord(n+1) : ''}</span><span class="pn">${esc(dn(p.name))}</span></button>`; }).join('')}</div>
     <div class="row">${mode === 'start'
       ? `<button data-act="back-names">Back</button><button class="primary" data-act="start" ${done && canWrite ? '' : 'disabled'}>Start game</button>`
       : `<button class="bb" data-act="reseat-cancel">Cancel</button><button class="bb primary" data-act="reseat-save" ${done ? '' : 'disabled'}>Save order</button>`}</div>
@@ -841,7 +911,9 @@ function setupView(){
   const names = ui.setupNames;
   return `<section class="glass panel">
     <h2>Who’s playing?</h2>
-    <div class="namegrid">${names.map((n,i)=>`<input type="text" id="setup-${i}" data-setup="${i}" placeholder="Player ${i+1}" value="${esc(n)}" ${canWrite?'':'disabled'}>`).join('')}</div>
+    <div class="namegrid">${names.map((n,i)=>`<input type="text" id="setup-${i}" data-setup="${i}" placeholder="Player ${i+1}" value="${esc(n)}" list="namelist" autocomplete="off" ${canWrite?'':'disabled'}>`).join('')}</div>
+    ${nameList()}
+    ${(() => { const typed = names.map(x => x.trim().toLowerCase()); const avail = savedNames().filter(n => !typed.includes(n.toLowerCase())); return avail.length && canWrite ? `<div class="namechips">${avail.map(n => `<span class="nchip"><button data-act="name-pick" data-n="${esc(n)}">${esc(n)}</button><button class="nx" data-act="name-forget" data-n="${esc(n)}" aria-label="Forget ${esc(n)}">✕</button></span>`).join('')}</div>` : ''; })()}
     <div class="row">
       ${names.length < 7 ? `<button data-act="setup-more" ${canWrite?'':'disabled'}>+ Add seat</button>` : ''}
       <button class="primary" data-act="names-next" ${canWrite?'':'disabled'}>Next</button>
@@ -859,7 +931,7 @@ function sheetView(c){
   const cols = c.list.filter(p => p.inGame || p.rounds);
   const entering = !c.winner && !game.split && c.active.length >= 2 && canWrite;
   const activeIds = new Set(c.active.map(p => p.id));
-  const head = cols.map((p, i) => `<th class="ph ${p.out?'pout':''}" style="--c:${hue(p.id)}"><span class="phn"><span class="pn">${esc(p.name)}</span>${p.id === dealerId ? `<span class="dealer ${dealSuit.red ? 'red' : ''}" title="Deals this round">${dealSuit.ch}&#xFE0E;</span>` : ''}</span></th>`).join('');
+  const head = cols.map((p, i) => `<th class="ph ${p.out?'pout':''}" style="--c:${hue(p.id)}"><span class="phn"><span class="pn">${esc(dn(p.name))}</span>${p.id === dealerId ? `<span class="dealer ${dealSuit.red ? 'red' : ''}" title="Deals this round">${dealSuit.ch}&#xFE0E;</span>` : ''}</span></th>`).join('');
   const statRow = (label, key) => `<tr class="srow s-${key}"><td class="rl">${label}</td>${cols.map(p => `<td>${p[key]}</td>`).join('')}</tr>`;
   const showEntry = entering;
   const rummyBy = Object.keys(draft).find(k => draft[k] !== '' && draft[k] != null && Number(draft[k]) === 0 && activeIds.has(k)) || null;
@@ -867,7 +939,7 @@ function sheetView(c){
   let scorePopup = null;
   const entryRow = !showEntry ? '' : `<tr class="erow2"><td class="rl">${c.rounds + 1}</td>${cols.map(p => {
     if (!activeIds.has(p.id)){
-      if (false) return `<td class="ent"><button class="rjb" style="--c:${hue(p.id)}" data-act="rejoin" data-p="${p.id}" aria-label="Rejoin ${esc(p.name)} at ${c.entryScore}">↺${c.entryScore}</button></td>`;
+      if (false) return `<td class="ent"><button class="rjb" style="--c:${hue(p.id)}" data-act="rejoin" data-p="${p.id}" aria-label="Rejoin ${esc(dn(p.name))} at ${c.entryScore}">↺${c.entryScore}</button></td>`;
       return '<td class="na">·</td>';
     }
     const guBtn = false ? `<button class="gub" data-act="${ui.confirm === 'gu-' + p.id ? 'giveup' : 'ask'}" data-c="gu-${p.id}" data-p="${p.id}">${ui.confirm === 'gu-' + p.id ? 'Sure?' : 'Give up'}</button>` : '';
@@ -875,7 +947,7 @@ function sheetView(c){
     const specials = ['0', String(s.drop), String(s.mid), String(s.full)];
     const cls = raw === '' ? '' : cellClass(Number(raw), s);
     if (ui.manual[p.id] || (raw !== '' && !specials.includes(String(raw)))){
-      return `<td class="ent" style="--c:${hue(p.id)}"><input type="number" class="pin" inputmode="numeric" min="2" max="${s.full}" id="pts-${p.id}" data-pts="${p.id}" value="${esc(raw)}" placeholder="2–${s.full - 1}" aria-label="Points for ${esc(p.name)}">${guBtn}</td>`;
+      return `<td class="ent" style="--c:${hue(p.id)}"><input type="number" class="pin" inputmode="numeric" min="2" max="${s.full}" id="pts-${p.id}" data-pts="${p.id}" value="${esc(raw)}" placeholder="2–${s.full - 1}" aria-label="Points for ${esc(dn(p.name))}">${guBtn}</td>`;
     }
     const compulsory = p.total > c.maxEntry - 1 && p.total < s.limit; // 226–250: must play, no drop or middle drop
     const noMid = p.total > 200 && p.total < s.limit; // over 200: no middle drop
@@ -883,7 +955,7 @@ function sheetView(c){
     const mustR = !rummyBy && c.active.every(q => q.id === p.id || (draft[q.id] !== undefined && draft[q.id] !== '' && Number(draft[q.id]) !== 0));
     const off = v => (mustR && v !== '0' && v !== '') || (v === '0' && rummyBy && rummyBy !== p.id) || (v === String(s.drop) && compulsory) || (v === String(s.mid) && (compulsory || noMid));
     if (ui.popup === 'score' && ui.scoreFor === p.id) scorePopup = { p, raw, off };
-    return `<td class="ent" style="--c:${hue(p.id)}"><button class="psel ${cls}" id="pts-${p.id}" data-act="score-open" data-p="${p.id}" aria-label="Points for ${esc(p.name)}">${raw === '' ? '–' : scoreLabel(Number(raw), s)}</button>${guBtn}</td>`;
+    return `<td class="ent" style="--c:${hue(p.id)}"><button class="psel ${cls}" id="pts-${p.id}" data-act="score-open" data-p="${p.id}" aria-label="Points for ${esc(dn(p.name))}">${raw === '' ? '–' : scoreLabel(Number(raw), s)}</button>${guBtn}</td>`;
   }).join('')}</tr>`;
   const colgroup = `<colgroup><col class="c-rl">${cols.map(() => '<col>').join('')}</colgroup>`;
   let rn = 0;
@@ -905,7 +977,7 @@ function sheetView(c){
   return `<section class="glass panel sheetpanel">
     <div class="sheetwrap" id="sheetwrap"><div class="sheetinner" style="--n:${cols.length}">
       <table class="pcols">${colgroup}
-      <thead><tr><th class="rl bankcell">${(() => { const bp = game.banker && game.players.find(x => x.id === game.banker); return bp ? `<span class="banker" title="Holds the money" aria-label="${esc(bp.name)} holds the money">$</span><span class="bname" style="--c:${hue(bp.id)}">${esc(bp.name)}</span>` : ''; })()}</th>${head}</tr></thead>
+      <thead><tr><th class="rl bankcell">${(() => { const bp = game.banker && game.players.find(x => x.id === game.banker); return bp ? `<span class="banker" title="Holds the money" aria-label="${esc(dn(bp.name))} holds the money">$</span><span class="bname" style="--c:${hue(bp.id)}">${esc(dn(bp.name))}</span>` : ''; })()}</th>${head}</tr></thead>
       <tbody>
         <tr class="totrow"><td class="rl">S</td>${cols.map(p => `<td class="ptot ${band(p.total,s)} ${p.out?'pout isout':''}">${p.out ? (cols.length >= 6 ? 'O' : 'OUT') : p.total}</td>`).join('')}</tr>
         ${entryRow}
@@ -920,7 +992,7 @@ function sheetView(c){
   </section>${scorePopup ? (() => { const {p, raw, off} = scorePopup;
     const opt = (v, l, cls) => `<button class="sopt ${cls} ${String(raw) === v ? 'cur' : ''}" data-act="score-set" data-p="${p.id}" data-v="${v}" ${off(v) ? 'disabled' : ''}>${l}</button>`;
     return `<div class="modal" data-act="popup-close"><div class="modalbox" data-stop="1"><section class="glass panel tpanel" style="--c:${hue(p.id)}">
-      <div class="row spread"><h2 style="color:var(--c)">${esc(p.name)} · ${p.total}</h2><button class="bb" data-act="popup-close">✕</button></div>
+      <div class="row spread"><h2 style="color:var(--c)">${esc(dn(p.name))} · ${p.total}</h2><button class="bb" data-act="popup-close">✕</button></div>
       <div class="sgrid">${opt('0','R','c0')}${opt(String(s.drop),'D','c25')}${opt(String(s.mid),'MD','c50')}${opt(String(s.full),'FC','c80')}</div>
       <div class="btnrow two"><button class="sopt cman" data-act="score-manual" data-p="${p.id}" ${off('manual') ? 'disabled' : ''}>✎ Type 2–${s.full - 1}</button><button class="sopt cclr" data-act="score-set" data-p="${p.id}" data-v="">Clear</button></div>
     </section></div></div>`; })() : ''}${ui.popup === 'edit' && ui.edit ? editPopup(c) : ''}`;
@@ -958,14 +1030,14 @@ function gameView(){
     const others = selP ? guList.filter(q => q.id !== sel) : [];
     const soloOk = pv && pv.canEnter && pv.entryScore < selP.total;
     popup = `<div class="modal" data-act="popup-close"><div class="modalbox" data-stop="1"><section class="glass panel tpanel">
-      <div class="row spread"><h2>Give up</h2>${pv ? `<span class="hint">${soloOk ? 'Rejoin at ' + pv.entryScore : others.length ? 'Rejoin at ' + guEntry + ' if ' + others.map(q => esc(q.name)).join(' & ') + ' also give' + (others.length > 1 ? '' : 's') + ' up' : 'Rejoin blocked (' + pv.entryScore + ')'}</span>` : ''}</div>
-      <div class="rjgrid">${guList.map(p => `<button class="act ${sel === p.id ? 'sel' : ''}" style="--c:${hue(p.id)}" data-act="gu-pick" data-p="${p.id}"><b>${esc(p.name)}</b> ${p.total}</button>`).join('')}</div>
+      <div class="row spread"><h2>Give up</h2>${pv ? `<span class="hint">${soloOk ? 'Rejoin at ' + pv.entryScore : others.length ? 'Rejoin at ' + guEntry + ' if ' + others.map(q => esc(dn(q.name))).join(' & ') + ' also give' + (others.length > 1 ? '' : 's') + ' up' : 'Rejoin blocked (' + pv.entryScore + ')'}</span>` : ''}</div>
+      <div class="rjgrid">${guList.map(p => `<button class="act ${sel === p.id ? 'sel' : ''}" style="--c:${hue(p.id)}" data-act="gu-pick" data-p="${p.id}"><b>${esc(dn(p.name))}</b> ${p.total}</button>`).join('')}</div>
       <div class="btnrow two"><button class="bb" data-act="popup-close">Cancel</button><button class="bb" data-act="giveup" data-p="${sel || ''}" ${sel ? '' : 'disabled'}>Give up</button></div>
     </section></div></div>`;
   } else if (ui.popup === 'rejoin' && rjList.length){
     popup = `<div class="modal" data-act="popup-close"><div class="modalbox" data-stop="1"><section class="glass panel tpanel">
       <div class="row spread"><h2>Rejoin at ${c.entryScore}</h2>${rjList.length > 1 ? '<span class="hint">Highest card first</span>' : ''}</div>
-      <div class="rjgrid">${rjList.map(p => `<button class="act" style="--c:${hue(p.id)}" data-act="rejoin" data-p="${p.id}"><b>${esc(p.name)}</b> rejoin</button>`).join('')}</div>
+      <div class="rjgrid">${rjList.map(p => `<button class="act" style="--c:${hue(p.id)}" data-act="rejoin" data-p="${p.id}"><b>${esc(dn(p.name))}</b> rejoin</button>`).join('')}</div>
       <div class="btnrow two"><span></span><button class="bb" data-act="popup-close">Done</button></div>
     </section></div></div>`;
   }
@@ -974,25 +1046,25 @@ function gameView(){
     <div class="btnrow two"><button class="bb gbtn" data-act="popup" data-w="giveup" ${guList.length ? '' : 'disabled'}>Give up</button><button class="bb rbtn" data-act="popup" data-w="rejoin" ${rjList.length ? '' : 'disabled'}>Rejoin${rjList.length ? ` (${rjList.length})` : ''}</button></div>
   </section>${popup}` : '';
 
-  const banner = c.winner ? `<div class="glass banner"><img class="trophy" src="${TROPHY}" alt=""><div class="bwin"><b>${esc(c.winner.name)} wins</b><span>${money(pool(c))}</span></div><img class="trophy" src="${TROPHY}" alt=""></div>`
-    : game.split ? `<div class="glass banner"><img class="trophy" src="${TROPHY}" alt=""><div class="bwin"><b>Pot split</b><span>${game.split.map(r => `${esc(r.name)} ${money(r.amt)}`).join(' · ')}</span></div><img class="trophy" src="${TROPHY}" alt=""></div>` : '';
+  const banner = c.winner ? `<div class="glass banner"><img class="trophy" src="${TROPHY}" alt=""><div class="bwin"><b>${esc(dn(c.winner.name))} wins</b><span>${money(pool(c))}</span></div><img class="trophy" src="${TROPHY}" alt=""></div>`
+    : game.split ? `<div class="glass banner"><img class="trophy" src="${TROPHY}" alt=""><div class="bwin"><b>Pot split</b><span>${game.split.map(r => `${esc(dn(r.name))} ${money(r.amt)}`).join(' · ')}</span></div><img class="trophy" src="${TROPHY}" alt=""></div>` : '';
   // money section for the Setup tab
   const rowsSplit = !c.winner && !game.split && c.active.length >= 2 ? splitCalc(c) : [];
   const settle = settlement(game, c);
   const moneyView = `<section class="glass panel tpanel">
     ${settle ? `<button class="tablehead" data-act="sec-toggle" data-k="potOpen"><h2>Pot</h2><span class="row" style="gap:8px"><b class="pot">${money(pool(c))}</b><span class="chev">${ui.potOpen ? '▲' : '▼'}</span></span></button>` : `<div class="row spread"><h2>Pot</h2><b class="pot">${money(pool(c))}</b></div>`}
-    ${settle && ui.potOpen ? `<table class="splitt"><thead><tr><th></th><th>Paid</th><th>Gets</th><th>Net</th></tr></thead><tbody>${settle.map(r => `<tr style="--c:${hue(r.id)}"><td class="sn">${esc(r.name)}</td><td>${money(r.paid)}</td><td class="sa">${money(r.got)}</td><td class="${r.net > 0 ? 'pos' : r.net < 0 ? 'neg' : ''}">${r.net > 0 ? '+' : r.net < 0 ? '−' : ''}${money(Math.abs(r.net))}</td></tr>`).join('')}</tbody></table>` : ''}
+    ${settle && ui.potOpen ? `<table class="splitt"><thead><tr><th></th><th>Paid</th><th>Gets</th><th>Net</th></tr></thead><tbody>${settle.map(r => `<tr style="--c:${hue(r.id)}"><td class="sn">${esc(dn(r.name))}</td><td>${money(r.paid)}</td><td class="sa">${money(r.got)}</td><td class="${r.net > 0 ? 'pos' : r.net < 0 ? 'neg' : ''}">${r.net > 0 ? '+' : r.net < 0 ? '−' : ''}${money(Math.abs(r.net))}</td></tr>`).join('')}</tbody></table>` : ''}
     ${rowsSplit.length && canWrite ? `<div class="btnrow two"><button class="bb" data-act="popup" data-w="split">Split the pot</button><button class="bb" data-act="msplit-open">Manual split</button></div>` : ''}
   </section>${ui.popup === 'msplit' && rowsSplit.length ? (() => { const left = pool(c) - rowsSplit.reduce((a, r) => a + (Number(ui.mSplit[r.id]) || 0), 0); return `<div class="modal" data-act="popup-close"><div class="modalbox" data-stop="1"><section class="glass panel tpanel">
       <div class="row spread"><h2>Manual split ${money(pool(c))}</h2><span class="hint" id="msplit-left" style="color:${left ? 'var(--red)' : 'var(--ok)'}">Left ${money(left)}</span></div>
       <table class="splitt"><thead><tr><th></th><th>Score</th><th>Gets A$</th></tr></thead>
-        <tbody>${rowsSplit.map(r => `<tr style="--c:${hue(r.id)}"><td class="sn">${esc(r.name)}</td><td>${r.total}</td><td><input class="msin" type="number" inputmode="numeric" min="0" step="1" data-msplit="${r.id}" value="${esc(String(ui.mSplit[r.id] ?? ''))}" style="width:80px;text-align:center"></td></tr>`).join('')}</tbody></table>
+        <tbody>${rowsSplit.map(r => `<tr style="--c:${hue(r.id)}"><td class="sn">${esc(dn(r.name))}</td><td>${r.total}</td><td><input class="msin" type="number" inputmode="numeric" min="0" step="1" data-msplit="${r.id}" value="${esc(String(ui.mSplit[r.id] ?? ''))}" style="width:80px;text-align:center"></td></tr>`).join('')}</tbody></table>
       ${ui.msg ? `<div class="hint" id="msplit-err" style="color:var(--red);text-align:center">${esc(ui.msg)}</div>` : ''}
       <div class="btnrow two"><button class="bb" data-act="popup-close">Cancel</button><button class="bb primary" data-act="msplit-confirm">Confirm split</button></div>
     </section></div></div>`; })() : ''}${ui.popup === 'split' && rowsSplit.length ? `<div class="modal" data-act="popup-close"><div class="modalbox" data-stop="1"><section class="glass panel tpanel">
       <div class="row spread"><h2>Split ${money(pool(c))}</h2><span class="hint">${money(c.s.dropValue)} per drop</span></div>
       <table class="splitt"><thead><tr><th></th><th>Score</th><th>Drops</th><th>Gets</th></tr></thead>
-        <tbody>${rowsSplit.map(r => `<tr style="--c:${hue(r.id)}"><td class="sn">${esc(r.name)}</td><td>${r.total}</td><td>${r.drops}</td><td class="sa">${money(r.amt)}${r.note ? '<small> back</small>' : ''}</td></tr>`).join('')}</tbody></table>
+        <tbody>${rowsSplit.map(r => `<tr style="--c:${hue(r.id)}"><td class="sn">${esc(dn(r.name))}</td><td>${r.total}</td><td>${r.drops}</td><td class="sa">${money(r.amt)}${r.note ? '<small> back</small>' : ''}</td></tr>`).join('')}</tbody></table>
       <div class="btnrow two"><button class="bb" data-act="popup-close">Cancel</button><button class="bb primary" data-act="split-confirm">Confirm split</button></div>
     </section></div></div>` : ''}`;
 
@@ -1004,10 +1076,10 @@ function gameView(){
     ${false ? '' : `
     <div class="row"><button class="bb" style="width:100%" data-act="reseat">Change seating</button></div>
     <div class="addrow">
-      <input type="text" id="add-name" placeholder="New player name" value="${esc(ui.addName)}">
+      <input type="text" id="add-name" placeholder="New player name" value="${esc(ui.addName)}" list="namelist" autocomplete="off">${nameList()}
       <button class="bb addbtn" data-act="add" ${(c.rounds && !c.canEnter) || c.winner || game.split ? 'disabled' : ''}>Add${c.rounds ? ` at ${c.entryScore}` : ''}</button>
     </div>
-    ${c.rounds === 0 ? `<div class="rmgrid">${game.players.map(p=>`<button class="bb danger" data-act="remove" data-p="${p.id}" aria-label="Remove ${esc(p.name)}">✕ ${esc(p.name)}</button>`).join('')}</div>` : ''}
+    ${c.rounds === 0 ? `<div class="rmgrid">${game.players.map(p=>`<button class="bb danger" data-act="remove" data-p="${p.id}" aria-label="Remove ${esc(p.name)}">✕ ${esc(dn(p.name))}</button>`).join('')}</div>` : ''}
     ${ui.confirm === 'new-same' ? `<div class="confirm">Finish this game and start again with the same players?<button class="bb primary" data-act="new-same">Start new game</button><button class="bb" data-act="cancel">Cancel</button></div>`
       : ui.confirm === 'new-fresh' ? `<div class="confirm">Finish this game and pick new players?<button class="bb primary" data-act="new-fresh">Start fresh</button><button class="bb" data-act="cancel">Cancel</button></div>`
       : `<div class="stack"><button class="bb" data-act="ask" data-c="new-same">New game, same players</button><button class="bb" data-act="ask" data-c="new-fresh">New game, new players</button></div>`}
@@ -1026,7 +1098,7 @@ function gameView(){
     if (ui.winKey !== key){
       ui.winKey = key; clearTimeout(ui.winT);
       ui.winT = setTimeout(() => {
-        if (ui.winKey === key && game && game.log && (compute(game).winner || game.split)){ ui.tab = 'stats'; try { localStorage.setItem('rummy-tab', 'stats'); } catch(_){} render(); window.scrollTo({top:0}); }
+        if (ui.winKey === key && game && game.log && (compute(game).winner || game.split)){ ui.tab = 'stats'; try { localStorage.setItem('rummy-tab', 'stats'); } catch(_){} render(); (document.querySelector('.wrap')||{}).scrollTop = 0; }
       }, 4000);
     }
   }
@@ -1099,7 +1171,7 @@ function seasonView(){
   return `<section class="glass panel tpanel">
     <button class="tablehead" data-act="sec-toggle" data-k="seasonOpen"><h2>Season</h2><span class="row" style="gap:8px"><span class="hint">${games.length} game${games.length === 1 ? '' : 's'}${ui.seasonOpen ? ' · tap a name' : ''}</span><span class="chev">${ui.seasonOpen ? '▲' : '▼'}</span></span></button>
     ${ui.seasonOpen ? `<table class="splitt season"><thead><tr><th></th><th>Played</th><th>Won</th><th>R</th><th>Net</th></tr></thead>
-      <tbody>${rows.map(t => `<tr style="--c:${colorOf(t.name)}" data-act="player-hist" data-n="${esc(t.name)}"><td class="sn">${esc(t.name)}</td><td>${t.games}</td><td>${t.wins}</td><td>${t.R}</td><td class="${t.net > 0 ? 'pos' : t.net < 0 ? 'neg' : ''}">${t.hasMoney ? (t.net > 0 ? '+' : t.net < 0 ? '−' : '') + money(Math.abs(t.net)) : '–'}</td></tr>`).join('')}</tbody></table>` : ''}
+      <tbody>${rows.map(t => `<tr style="--c:${colorOf(t.name)}" data-act="player-hist" data-n="${esc(t.name)}"><td class="sn">${esc(dn(t.name))}</td><td>${t.games}</td><td>${t.wins}</td><td>${t.R}</td><td class="${t.net > 0 ? 'pos' : t.net < 0 ? 'neg' : ''}">${t.hasMoney ? (t.net > 0 ? '+' : t.net < 0 ? '−' : '') + money(Math.abs(t.net)) : '–'}</td></tr>`).join('')}</tbody></table>` : ''}
   </section>${ui.popup === 'phist' && ui.histName ? playerHistPopup(ui.histName, games) : ''}`;
 }
 function playerHistPopup(name, games){
@@ -1109,7 +1181,7 @@ function playerHistPopup(name, games){
   let best = 0, run = 0;
   [...mine].reverse().forEach(gm => { if (gm.winner === name){ run++; best = Math.max(best, run); } else run = 0; });
   return `<div class="modal" data-act="popup-close"><div class="modalbox" data-stop="1"><section class="glass panel tpanel">
-    <div class="row spread"><h2>${esc(name)}</h2><button class="bb" data-act="popup-close">✕</button></div>
+    <div class="row spread"><h2>${esc(dn(name))} <small class="muted" style="font-size:12px;letter-spacing:0;text-transform:none">${esc(name)}</small></h2><button class="bb" data-act="popup-close">✕</button></div>
     <div class="pstats"><span class="s-R">R ${tot.R}</span><span class="s-D">D ${tot.D}</span><span class="s-M">MD ${tot.M}</span><span class="s-F">FC ${tot.F}</span><span>Best streak ${best}</span></div>
     <div class="hist">${mine.map(gm => { const r = gm.results.find(x => x.name === name); const m = (gm.money || []).find(x => x.name === name);
       const res = gm.winner === name ? '🏆 Won' : gm.split ? 'Split' : r.out ? 'Out' : gm.winner ? 'Lost' : '';
@@ -1118,11 +1190,11 @@ function playerHistPopup(name, games){
 }
 function historyView(){
   if (!history.length) return '';
-  return `<section class="glass panel tpanel"><button class="tablehead" data-act="sec-toggle" data-k="histOpen"><h2>Past games</h2><span class="row" style="gap:8px"><span class="hint">${history.length}</span><span class="chev">${ui.histOpen ? '▲' : '▼'}</span></span></button>${!ui.histOpen ? '' : `<div class="hist">${history.slice(0,10).map(h => `<div><span>${new Date(h.endedAt).toLocaleDateString(undefined,{day:'numeric',month:'short'})} · ${h.rounds} rounds</span><span>${h.winner ? '🏆 '+esc(h.winner) + (h.pot ? ' ' + money(h.pot) : '') : h.split ? 'Split: ' + h.split.map(r => esc(r.name) + ' ' + money(r.amt)).join(', ') : esc((h.results||[]).filter(r=>!r.out).map(r=>r.name).join(', ') || 'Unfinished')}</span></div>`).join('')}</div>`}</section>`;
+  return `<section class="glass panel tpanel"><button class="tablehead" data-act="sec-toggle" data-k="histOpen"><h2>Past games</h2><span class="row" style="gap:8px"><span class="hint">${history.length}</span><span class="chev">${ui.histOpen ? '▲' : '▼'}</span></span></button>${!ui.histOpen ? '' : `<div class="hist">${history.slice(0,10).map(h => `<div><span>${new Date(h.endedAt).toLocaleDateString(undefined,{day:'numeric',month:'short'})} · ${h.rounds} rounds</span><span>${h.winner ? '🏆 '+esc(dn(h.winner)) + (h.pot ? ' ' + money(h.pot) : '') : h.split ? 'Split: ' + h.split.map(r => esc(dn(r.name)) + ' ' + money(r.amt)).join(', ') : esc((h.results||[]).filter(r=>!r.out).map(r=>dn(r.name)).join(', ') || 'Unfinished')}</span></div>`).join('')}</div>`}</section>`;
 }
 
 /* ---------- events ---------- */
-document.getElementById('tabsbar').addEventListener('click', e => { const b = e.target.closest('[data-act="tab"]'); if (!b) return; ui.tab = b.dataset.t; try { localStorage.setItem('rummy-tab', ui.tab); } catch(_){} render(); window.scrollTo({top:0}); });
+document.getElementById('tabsbar').addEventListener('click', e => { const b = e.target.closest('[data-act="tab"]'); if (!b) return; ui.tab = b.dataset.t; try { localStorage.setItem('rummy-tab', ui.tab); } catch(_){} render(); (document.querySelector('.wrap')||{}).scrollTop = 0; });
 // two players left: if one drops or middle-drops, the other gets Rummy automatically
 function autoRummy(pid, val){
   const c = compute(game);
@@ -1151,6 +1223,8 @@ app.addEventListener('click', e => {
   const b = e.target.closest('[data-act]'); if (!b) return;
   const a = b.dataset.act;
   if (a === 'setup-more'){ ui.setupNames.push(''); render(); }
+  else if (a === 'name-pick'){ const n = b.dataset.n; const i = ui.setupNames.findIndex(x => !x.trim()); if (i >= 0) ui.setupNames[i] = n; else if (ui.setupNames.length < 7) ui.setupNames.push(n); render(); }
+  else if (a === 'name-forget'){ forgetName(b.dataset.n); render(); }
   else if (a === 'signin') signIn(false);
   else if (a === 'signout') signOut();
   else if (a === 'sec-toggle'){ ui[b.dataset.k] = !ui[b.dataset.k]; render(); }
